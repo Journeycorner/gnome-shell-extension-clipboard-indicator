@@ -199,8 +199,7 @@ const ClipboardIndicator = GObject.registerClass({
 
         that.scrollViewMenuSection.actor.add_child(this.historyScrollView);
 
-        // Add separator
-        this.historySeparator = new PopupMenu.PopupSeparatorMenuItem();
+        // Separator above history removed
 
         // Add sections ordered according to settings
         if (PINNED_ON_BOTTOM) {
@@ -241,7 +240,6 @@ const ClipboardIndicator = GObject.registerClass({
 
     #hideElements() {
         if (this.menu.box.contains(this.favoritesSeparator)) this.menu.box.remove_child(this.favoritesSeparator);
-        if (this.menu.box.contains(this.historySeparator)) this.menu.box.remove_child(this.historySeparator);
         if (this.menu.box.contains(this.emptyStateSection)) this.menu.box.remove_child(this.emptyStateSection);
     }
 
@@ -260,14 +258,7 @@ const ClipboardIndicator = GObject.registerClass({
                 this.menu.box.remove_child(this.favoritesSeparator);
             }
 
-            if (this.historySection._getMenuItems().length > 0) {
-                if (this.menu.box.contains(this.historySeparator) === false) {
-                    this.menu.box.insert_child_above(this.historySeparator, this.scrollViewMenuSection.actor);
-                }
-            }
-            else if (this.menu.box.contains(this.historySeparator) === true) {
-                this.menu.box.remove_child(this.historySeparator);
-            }
+            // Bottom history separator removed
         }
         else if (this.menu.box.contains(this.emptyStateSection) === false) {
             this.#renderEmptyState();
@@ -397,26 +388,7 @@ const ClipboardIndicator = GObject.registerClass({
         this._setEntryLabel(menuItem);
         this.clipItemsRadioGroup.push(menuItem);
 
-        // Favorite button
-        let iconfav = new St.Icon({
-            icon_name: 'view-pin-symbolic',
-            style_class: 'system-status-icon'
-        });
-
-        let icofavBtn = new St.Button({
-            style_class: 'ci-pin-btn ci-action-btn',
-            can_focus: true,
-            child: iconfav,
-            x_align: Clutter.ActorAlign.END,
-            x_expand: true,
-            y_expand: true
-        });
-
-        menuItem.actor.add_child(icofavBtn);
-        menuItem.icofavBtn = icofavBtn;
-        menuItem.favoritePressId = icofavBtn.connect('clicked',
-            () => this._favoriteToggle(menuItem)
-        );
+        // Favorite button removed
 
         // Paste button
         menuItem.pasteBtn = new St.Button({
@@ -438,26 +410,7 @@ const ClipboardIndicator = GObject.registerClass({
 
         menuItem.actor.add_child(menuItem.pasteBtn);
 
-        // Delete button
-        let icon = new St.Icon({
-            icon_name: 'edit-delete-symbolic', //'mail-attachment-symbolic',
-            style_class: 'system-status-icon'
-        });
-
-        let icoBtn = new St.Button({
-            style_class: 'ci-action-btn',
-            can_focus: true,
-            child: icon,
-            x_align: Clutter.ActorAlign.END,
-            x_expand: false,
-            y_expand: true
-        });
-
-        menuItem.actor.add_child(icoBtn);
-        menuItem.icoBtn = icoBtn;
-        menuItem.deletePressId = icoBtn.connect('clicked',
-            () => this._removeEntry(menuItem, 'delete')
-        );
+        // Delete button removed
 
         if (entry.isFavorite()) {
             this.favoritesSection.addMenuItem(menuItem, 0);
@@ -528,7 +481,7 @@ const ClipboardIndicator = GObject.registerClass({
             let clipContents = menuItem.clipContents;
 
             if (otherMenuItem === menuItem && clipContents) {
-                menuItem.setOrnament(PopupMenu.Ornament.DOT);
+                menuItem.setOrnament(PopupMenu.Ornament.NONE);
                 menuItem.currentlySelected = true;
                 if (autoSet !== false)
                     this.#updateClipboard(menuItem.entry);
@@ -550,7 +503,7 @@ const ClipboardIndicator = GObject.registerClass({
             let clipContents = menuItem.clipContents;
 
             if (menuItem === otherMenuItem && clipContents) {
-                menuItem.setOrnament(PopupMenu.Ornament.DOT);
+                menuItem.setOrnament(PopupMenu.Ornament.NONE);
                 menuItem.currentlySelected = true;
                 if (autoSet !== false)
                     this.#updateClipboard(menuItem.entry);
@@ -692,8 +645,8 @@ const ClipboardIndicator = GObject.registerClass({
             let clipSecond = this.clipItemsRadioGroup.length - 2;
             let previousClip = this.clipItemsRadioGroup[clipSecond];
             this.#updateClipboard(previousClip.entry);
-            previousClip.setOrnament(PopupMenu.Ornament.DOT);
-            previousClip.icoBtn.visible = false;
+            previousClip.setOrnament(PopupMenu.Ornament.NONE);
+            // Delete icon removed; nothing to toggle here
             previousClip.currentlySelected = true;
         } else {
             this.#clearClipboard();

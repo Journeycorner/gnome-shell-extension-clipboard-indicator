@@ -44,9 +44,7 @@
     max-height:450px;
 }
 
-.ci-main-menu-section StButton.ci-pin-btn {
-    color: rgba(255,255,255,0.3);
-}
+/* Removed pin button styles */
 
 .clipboard-hidden {
     display:none!important;
@@ -72,4 +70,12 @@
     width:1em;
     height:1em;
     margin-right:.25em;
+}
+
+/* Remove left ornament gap (selection dot area) */
+.popup-menu-item .popup-menu-ornament {
+    width: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
 }

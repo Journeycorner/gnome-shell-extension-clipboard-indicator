@@ -10,11 +10,7 @@
 The most popular, reliable and feature-rich clipboard manager for GNOME with
 over **1M** downloads.
 
-|Screenshot|
 
-.. |Screenshot| image:: ./screenshot.png
-  :width: 400
-  :alt: A screenshot of the clipboard manager, showing clipboard history including images
 
 This extension is also packaged by the community for many popular Linux distros
 — search your package manager.

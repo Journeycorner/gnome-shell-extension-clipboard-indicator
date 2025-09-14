@@ -180,12 +180,10 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     async _buildMenu () {
-        let that = this;
         const clipHistory = await this._getCache();
-        let lastIdx = clipHistory.length - 1;
-        let clipItemsArr = that.clipItemsRadioGroup;
+        const lastIdx = clipHistory.length - 1;
 
-        that.menu.connect('open-state-changed', (self, open) => {
+        this.menu.connect('open-state-changed', (_self, open) => {
             this._setFocusOnOpenTimeout = setTimeout(() => {
                 if (open) {
                     this.#focusFirstVisibleItem();
@@ -195,40 +193,39 @@ const ClipboardIndicator = GObject.registerClass({
 
         // Create menu sections for items
         // Favorites
-        that.favoritesSection = new PopupMenu.PopupMenuSection();
+        this.favoritesSection = new PopupMenu.PopupMenuSection();
 
-        that.scrollViewFavoritesMenuSection = new PopupMenu.PopupMenuSection();
+        this.scrollViewFavoritesMenuSection = new PopupMenu.PopupMenuSection();
         this.favoritesScrollView = new St.ScrollView({
             style_class: 'ci-history-menu-section',
             overlay_scrollbars: true
         });
-        this.favoritesScrollView.add_child(that.favoritesSection.actor);
+        this.favoritesScrollView.add_child(this.favoritesSection.actor);
 
-        that.scrollViewFavoritesMenuSection.actor.add_child(this.favoritesScrollView);
+        this.scrollViewFavoritesMenuSection.actor.add_child(this.favoritesScrollView);
         this.favoritesSeparator = new PopupMenu.PopupSeparatorMenuItem();
 
         // History
-        that.historySection = new PopupMenu.PopupMenuSection();
+        this.historySection = new PopupMenu.PopupMenuSection();
 
-        that.scrollViewMenuSection = new PopupMenu.PopupMenuSection();
+        this.scrollViewMenuSection = new PopupMenu.PopupMenuSection();
         this.historyScrollView = new St.ScrollView({
             style_class: 'ci-main-menu-section ci-history-menu-section',
             overlay_scrollbars: true
         });
-        this.historyScrollView.add_child(that.historySection.actor);
+        this.historyScrollView.add_child(this.historySection.actor);
 
-        that.scrollViewMenuSection.actor.add_child(this.historyScrollView);
+        this.scrollViewMenuSection.actor.add_child(this.historyScrollView);
 
         // Separator above history removed
 
         // Add sections ordered according to settings
         if (PINNED_ON_BOTTOM) {
-            that.menu.addMenuItem(that.scrollViewMenuSection);
-            that.menu.addMenuItem(that.scrollViewFavoritesMenuSection);
-        }
-        else {
-            that.menu.addMenuItem(that.scrollViewFavoritesMenuSection);
-            that.menu.addMenuItem(that.scrollViewMenuSection);
+            this.menu.addMenuItem(this.scrollViewMenuSection);
+            this.menu.addMenuItem(this.scrollViewFavoritesMenuSection);
+        } else {
+            this.menu.addMenuItem(this.scrollViewFavoritesMenuSection);
+            this.menu.addMenuItem(this.scrollViewMenuSection);
         }
 
         // Removed bottom links: Private mode, Clear history, Settings
@@ -252,9 +249,9 @@ const ClipboardIndicator = GObject.registerClass({
         clipHistory.forEach(entry => this._addEntry(entry));
 
         if (lastIdx >= 0) {
-            that._selectMenuItem(clipItemsArr[lastIdx]);
+            this._selectMenuItem(this.clipItemsRadioGroup[lastIdx]);
         }
-
+        
         this.#showElements();
     }
 
@@ -476,23 +473,21 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _removeOldestEntries () {
-        let that = this;
-
-        let clipItemsRadioGroupNoFavorite = that.clipItemsRadioGroup.filter(
+        let clipItemsRadioGroupNoFavorite = this.clipItemsRadioGroup.filter(
             item => item.entry.isFavorite() === false);
 
         const origSize = clipItemsRadioGroupNoFavorite.length;
 
         while (clipItemsRadioGroupNoFavorite.length > MAX_REGISTRY_LENGTH) {
-            let oldestNoFavorite = clipItemsRadioGroupNoFavorite.shift();
-            that._removeEntry(oldestNoFavorite);
+            const oldestNoFavorite = clipItemsRadioGroupNoFavorite.shift();
+            this._removeEntry(oldestNoFavorite);
 
-            clipItemsRadioGroupNoFavorite = that.clipItemsRadioGroup.filter(
+            clipItemsRadioGroupNoFavorite = this.clipItemsRadioGroup.filter(
                 item => item.entry.isFavorite() === false);
         }
 
         if (clipItemsRadioGroupNoFavorite.length < origSize) {
-            that._updateCache();
+            this._updateCache();
         }
     }
 
@@ -724,7 +719,6 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _onPrivateModeSwitch () {
-        let that = this;
         PRIVATEMODE = this.privateModeMenuItem.state;
         // We hide the history in private ModeTypee because it will be out of sync (selected item will not reflect clipboard)
         this.scrollViewMenuSection.actor.visible = !PRIVATEMODE;
@@ -880,29 +874,27 @@ const ClipboardIndicator = GObject.registerClass({
 
     async _onSettingsChange () {
         try {
-            var that = this;
-
             // Load the settings into variables
-            that._fetchSettings();
+            this._fetchSettings();
 
             // Remove old entries in case the registry size changed
-            that._removeOldestEntries();
+            this._removeOldestEntries();
 
             // Re-set menu-items lables in case preview size changed
-            this._getAllIMenuItems().forEach(function (mItem) {
-                that._setEntryLabel(mItem);
+            this._getAllIMenuItems().forEach((mItem) => {
+                this._setEntryLabel(mItem);
                 mItem.pasteBtn.visible = PASTE_BUTTON;
             });
 
             //update topbar
             this._updateTopbarLayout();
-            that.#updateIndicatorContent(await this.#getClipboardContent());
+            this.#updateIndicatorContent(await this.#getClipboardContent());
 
             // Bind or unbind shortcuts
             if (ENABLE_KEYBINDING)
-                that._bindShortcuts();
+                this._bindShortcuts();
             else
-                that._unbindShortcuts();
+                this._unbindShortcuts();
         } catch (e) {
             console.error('Clipboard Indicator: Failed to update registry');
             console.error(e);
@@ -923,8 +915,7 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _bindShortcut (name, cb) {
-        var ModeType = Shell.hasOwnProperty('ActionMode') ?
-            Shell.ActionMode : Shell.KeyBindingMode;
+        const ModeType = Shell.ActionMode;
 
         Main.wm.addKeybinding(
             name,
@@ -988,35 +979,33 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _selectEntryWithDelay (entry) {
-        let that = this;
-        that._selectMenuItem(entry, false);
+        this._selectMenuItem(entry, false);
 
-        that._delayedSelectionTimeoutId = setTimeout(function () {
-            that._selectMenuItem(entry);  //select the item
-            that._delayedSelectionTimeoutId = null;
+        this._delayedSelectionTimeoutId = setTimeout(() => {
+            this._selectMenuItem(entry);  //select the item
+            this._delayedSelectionTimeoutId = null;
         }, DELAYED_SELECTION_TIMEOUT);
     }
 
     _previousEntry () {
         if (PRIVATEMODE) return;
-        let that = this;
 
-        that._clearDelayedSelectionTimeout();
+        this._clearDelayedSelectionTimeout();
 
-        this._getAllIMenuItems().some(function (mItem, i, menuItems){
+        this._getAllIMenuItems().some((mItem, i, menuItems) => {
             if (mItem.currentlySelected) {
                 i--;                                 //get the previous index
                 if (i < 0) i = menuItems.length - 1; //cycle if out of bound
                 let index = i + 1;                   //index to be displayed
                 
-                if(NOTIFY_ON_CYCLE) {
-                    that._showNotification(index + ' / ' + menuItems.length + ': ' + menuItems[i].entry.getStringValue());
+                if (NOTIFY_ON_CYCLE) {
+                    this._showNotification(index + ' / ' + menuItems.length + ': ' + menuItems[i].entry.getStringValue());
                 }
                 if (MOVE_ITEM_FIRST) {
-                    that._selectEntryWithDelay(menuItems[i]);
+                    this._selectEntryWithDelay(menuItems[i]);
                 }
                 else {
-                    that._selectMenuItem(menuItems[i]);
+                    this._selectMenuItem(menuItems[i]);
                 }
                 return true;
             }
@@ -1026,24 +1015,23 @@ const ClipboardIndicator = GObject.registerClass({
 
     _nextEntry () {
         if (PRIVATEMODE) return;
-        let that = this;
 
-        that._clearDelayedSelectionTimeout();
+        this._clearDelayedSelectionTimeout();
 
-        this._getAllIMenuItems().some(function (mItem, i, menuItems){
+        this._getAllIMenuItems().some((mItem, i, menuItems) => {
             if (mItem.currentlySelected) {
                 i++;                                 //get the next index
                 if (i === menuItems.length) i = 0;   //cycle if out of bound
                 let index = i + 1;                     //index to be displayed
 
-                if(NOTIFY_ON_CYCLE) {
-                    that._showNotification(index + ' / ' + menuItems.length + ': ' + menuItems[i].entry.getStringValue());
+                if (NOTIFY_ON_CYCLE) {
+                    this._showNotification(index + ' / ' + menuItems.length + ': ' + menuItems[i].entry.getStringValue());
                 }
                 if (MOVE_ITEM_FIRST) {
-                    that._selectEntryWithDelay(menuItems[i]);
+                    this._selectEntryWithDelay(menuItems[i]);
                 }
                 else {
-                    that._selectMenuItem(menuItems[i]);
+                    this._selectMenuItem(menuItems[i]);
                 }
                 return true;
             }

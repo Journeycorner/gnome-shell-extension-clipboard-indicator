@@ -1,4 +1,5 @@
 import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
@@ -72,6 +73,7 @@ const ClipboardIndicator = GObject.registerClass({
         this._disconnectSelectionListener();
         this._clearDelayedSelectionTimeout();
         this.#clearTimeouts();
+        this._stopScreenShareWatcher();
         this.dialogManager.destroy();
         this.keyboard.destroy();
 
@@ -83,11 +85,28 @@ const ClipboardIndicator = GObject.registerClass({
         this.extension = extension;
         this.registry = new Registry(extension);
         this.keyboard = new Keyboard();
+        this._screenShareWatchId = 0;
+        this._screenShareActive = false;
+        this._screenShareSignalIds = [];
         this._settingsChangedId = null;
         this._selectionOwnerChangedId = null;
         this._historyLabel = null;
         this._buttonText = null;
         this._disableDownArrow = null;
+
+        // Minimal private mode controller to allow programmatic toggling
+        this.privateModeMenuItem = {
+            state: false,
+            toggle: () => {
+                this.privateModeMenuItem.state = !this.privateModeMenuItem.state;
+                this._onPrivateModeSwitch();
+            },
+            setState: (state) => {
+                if (this.privateModeMenuItem.state === state) return;
+                this.privateModeMenuItem.state = state;
+                this._onPrivateModeSwitch();
+            },
+        };
 
         this._shortcutsBindingIds = [];
         this.clipItemsRadioGroup = [];
@@ -127,6 +146,7 @@ const ClipboardIndicator = GObject.registerClass({
         this._buildMenu().then(() => {
             this._updateTopbarLayout();
             this._setupListener();
+            this._startScreenShareWatcher();
         });
     }
 
@@ -742,6 +762,97 @@ const ClipboardIndicator = GObject.registerClass({
 
         if (ENABLE_KEYBINDING)
             this._bindShortcuts();
+    }
+
+    // --- Auto private mode on screen sharing ---
+    _isScreenSharingActive () {
+        // Be conservative: only trust explicit screen-share/record indicators
+        // in the panel status area. Broad Quick Settings scans caused false
+        // positives (e.g. unrelated "Cast" items kept private mode on).
+        try {
+            const sa = Main.panel?.statusArea ?? {};
+            const keys = ['screenSharing', 'screencast', 'screenRecording'];
+            for (const key of keys) {
+                const ind = sa[key];
+                if (!ind) continue;
+                const actor = ind?.actor || ind?.container || ind;
+                if (actor?.visible === true) {
+                    return true;
+                }
+            }
+        } catch (e) {
+            // Ignore and assume not active
+        }
+        return false;
+    }
+
+    _startScreenShareWatcher () {
+        if (this._screenShareWatchId) return;
+        const sync = () => {
+            const active = this._isScreenSharingActive();
+            // Always reflect current state in private mode
+            if (this.privateModeMenuItem.state !== active) {
+                this.privateModeMenuItem.setState(active);
+            }
+            this._screenShareActive = active;
+            return GLib.SOURCE_CONTINUE;
+        };
+        // Run once immediately to reset stale state after restart
+        sync();
+        // Poll as a fallback in case signal wiring misses an edge
+        this._screenShareWatchId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, sync);
+        // Also listen to indicator visibility changes for instant updates
+        this._connectScreenShareSignals();
+    }
+
+    _stopScreenShareWatcher () {
+        if (this._screenShareWatchId) {
+            GLib.Source.remove(this._screenShareWatchId);
+            this._screenShareWatchId = 0;
+        }
+        // Disconnect any visibility listeners
+        if (this._screenShareSignalIds?.length) {
+            for (const [obj, id] of this._screenShareSignalIds) {
+                try { obj?.disconnect?.(id); } catch {}
+            }
+            this._screenShareSignalIds = [];
+        }
+    }
+
+    _connectScreenShareSignals () {
+        const sa = Main.panel?.statusArea ?? {};
+        const candidates = [];
+        // Known indicator entries on various GNOME versions
+        for (const key of ['screenSharing', 'screencast', 'screenRecording']) {
+            if (sa[key]) candidates.push(sa[key]);
+        }
+        // Quick Settings container can also expose them
+        const qs = sa.quickSettings;
+        if (qs) {
+            for (const key of ['_screenSharing', 'screenSharing', '_screencast', 'screencast', '_screenRecording', 'screenRecording']) {
+                if (qs[key]) candidates.push(qs[key]);
+            }
+            const indicators = qs._indicators ?? qs.indicators;
+            if (indicators && typeof indicators.get_children === 'function') {
+                for (const child of indicators.get_children()) candidates.push(child);
+            }
+        }
+
+        const watch = (obj) => {
+            const actor = obj?.actor || obj?.container || obj;
+            if (!actor || typeof actor.connect !== 'function') return;
+            const id = actor.connect('notify::visible', () => {
+                // Recompute and sync immediately on visibility changes
+                const active = this._isScreenSharingActive();
+                if (this.privateModeMenuItem.state !== active) {
+                    this.privateModeMenuItem.setState(active);
+                }
+                this._screenShareActive = active;
+            });
+            this._screenShareSignalIds.push([actor, id]);
+        };
+
+        for (const obj of candidates) watch(obj);
     }
 
     _fetchSettings () {

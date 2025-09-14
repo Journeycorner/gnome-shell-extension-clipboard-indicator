@@ -83,9 +83,7 @@ class Settings {
             title: _("Show notification on cycle")
         });
 
-        this.field_confirm_clear_toggle = new Adw.SwitchRow({
-            title: _("Show confirmation on Clear History")
-        });
+        // Removed: confirmation on Clear History
 
         this.field_strip_text = new Adw.SwitchRow({
             title: _("Remove whitespace around text")
@@ -175,7 +173,6 @@ class Settings {
 
         this.notifications.add(this.field_clear_notification_toggle);
         this.notifications.add(this.field_cycle_notification_toggle)
-        this.notifications.add(this.field_confirm_clear_toggle);
 
         this.#buildShorcuts(this.shortcuts);
 
@@ -185,7 +182,6 @@ class Settings {
         this.schema.bind(PrefsFields.CACHE_ONLY_FAVORITE, this.field_cache_disable, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.NOTIFY_ON_COPY, this.field_clear_notification_toggle, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.NOTIFY_ON_CYCLE, this.field_cycle_notification_toggle, 'active', Gio.SettingsBindFlags.DEFAULT);
-        this.schema.bind(PrefsFields.CONFIRM_ON_CLEAR, this.field_confirm_clear_toggle, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.MOVE_ITEM_FIRST, this.field_move_item_first, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.KEEP_SELECTED_ON_CLEAR, this.field_keep_selected_on_clear, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.TOPBAR_DISPLAY_MODE_ID, this.field_display_mode, 'selected', Gio.SettingsBindFlags.DEFAULT);

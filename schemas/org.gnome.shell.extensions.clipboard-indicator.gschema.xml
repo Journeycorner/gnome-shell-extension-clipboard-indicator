@@ -166,7 +166,7 @@
             </description>
         </key>
         <key name="toggle-menu" type="as">
-        <default><![CDATA[['<Control>F9']]]></default>
+        <default><![CDATA[['<Super>period']]]></default>
             <summary>Toggle the menu</summary>
             <description>
                 Key to toggle the clipboard menu

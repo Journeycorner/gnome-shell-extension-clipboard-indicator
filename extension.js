@@ -30,7 +30,6 @@ let ENABLE_KEYBINDING         = true;
 let PRIVATEMODE               = false;
 let NOTIFY_ON_COPY            = true;
 let NOTIFY_ON_CYCLE           = true;
-let CONFIRM_ON_CLEAR          = true;
 let MAX_TOPBAR_LENGTH         = 15;
 let TOPBAR_DISPLAY_MODE       = 1; //0 - only icon, 1 - only clipboard content, 2 - both, 3 - neither
 let CLEAR_ON_BOOT             = false;
@@ -213,45 +212,7 @@ const ClipboardIndicator = GObject.registerClass({
             that.menu.addMenuItem(that.scrollViewMenuSection);
         }
 
-        // Private mode switch
-        that.privateModeMenuItem = new PopupMenu.PopupSwitchMenuItem(
-            _("Private mode"), PRIVATEMODE, { reactive: true });
-        that.privateModeMenuItem.connect('toggled',
-            that._onPrivateModeSwitch.bind(that));
-        that.privateModeMenuItem.insert_child_at_index(
-            new St.Icon({
-                icon_name: 'security-medium-symbolic',
-                style_class: 'clipboard-menu-icon',
-                y_align: Clutter.ActorAlign.CENTER
-            }),
-            0
-        );
-        that.menu.addMenuItem(that.privateModeMenuItem);
-
-        // Add 'Clear' button which removes all items from cache
-        this.clearMenuItem = new PopupMenu.PopupMenuItem(_('Clear history'));
-        this.clearMenuItem.insert_child_at_index(
-            new St.Icon({
-                icon_name: 'user-trash-symbolic',
-                style_class: 'clipboard-menu-icon',
-                y_align: Clutter.ActorAlign.CENTER
-            }),
-            0
-        );
-        this.clearMenuItem.connect('activate', that._removeAll.bind(that));
-
-        // Add 'Settings' menu item to open settings
-        this.settingsMenuItem = new PopupMenu.PopupMenuItem(_('Settings'));
-        this.settingsMenuItem.insert_child_at_index(
-            new St.Icon({
-                icon_name: 'preferences-system-symbolic',
-                style_class: 'clipboard-menu-icon',
-                y_align: Clutter.ActorAlign.CENTER
-            }),
-            0
-        );
-        that.menu.addMenuItem(this.settingsMenuItem);
-        this.settingsMenuItem.connect('activate', that._openSettings.bind(that));
+        // Removed bottom links: Private mode, Clear history, Settings
 
         // Empty state section
         this.emptyStateSection = new St.BoxLayout({
@@ -281,15 +242,11 @@ const ClipboardIndicator = GObject.registerClass({
     #hideElements() {
         if (this.menu.box.contains(this.favoritesSeparator)) this.menu.box.remove_child(this.favoritesSeparator);
         if (this.menu.box.contains(this.historySeparator)) this.menu.box.remove_child(this.historySeparator);
-        if (this.menu.box.contains(this.clearMenuItem)) this.menu.box.remove_child(this.clearMenuItem);
         if (this.menu.box.contains(this.emptyStateSection)) this.menu.box.remove_child(this.emptyStateSection);
     }
 
     #showElements() {
         if (this.clipItemsRadioGroup.length > 0) {
-            if (this.menu.box.contains(this.clearMenuItem) === false) {
-                this.menu.box.insert_child_below(this.clearMenuItem, this.settingsMenuItem);
-            }
             if (this.menu.box.contains(this.emptyStateSection) === true) {
                 this.menu.box.remove_child(this.emptyStateSection);
             }
@@ -330,10 +287,7 @@ const ClipboardIndicator = GObject.registerClass({
             }
         }
 
-        // Fallback: focus the private mode switch item
-        if (this.privateModeMenuItem && this.privateModeMenuItem.actor) {
-            this.privateModeMenuItem.actor.grab_key_focus();
-        }
+        // No fallback item at bottom
     }
 
     #renderEmptyState () {
@@ -400,8 +354,6 @@ const ClipboardIndicator = GObject.registerClass({
 
         if (nextMenuItem) {
             nextMenuItem.actor.grab_key_focus();
-        } else {
-            this.privateModeMenuItem.actor.grab_key_focus();
         }
     }
 
@@ -530,37 +482,7 @@ const ClipboardIndicator = GObject.registerClass({
         this.#showElements();
     }
 
-    _confirmRemoveAll () {
-        const title = _("Clear all?");
-        const message = _("Are you sure you want to delete all clipboard items?");
-        const sub_message = _("This operation cannot be undone.");
-
-        this.dialogManager.open(title, message, sub_message, _("Clear"), _("Cancel"), () => {
-            this._clearHistory();
-        }
-      );
-    }
-
-    _clearHistory () {
-        // Don't remove pinned items
-        this.historySection._getMenuItems().forEach(mItem => {
-            if (KEEP_SELECTED_ON_CLEAR === false || !mItem.currentlySelected) {
-                this._removeEntry(mItem, 'delete');
-            }
-        });
-        this._showNotification(_("Clipboard history cleared"));
-    }
-
-    _removeAll () {
-        if (PRIVATEMODE) return;
-        var that = this;
-
-        if (CONFIRM_ON_CLEAR) {
-            that._confirmRemoveAll();
-        } else {
-            that._clearHistory();
-        }
-    }
+    // Clear history feature removed
 
     _removeEntry (menuItem, event) {
         let itemIdx = this.clipItemsRadioGroup.indexOf(menuItem);
@@ -878,7 +800,6 @@ const ClipboardIndicator = GObject.registerClass({
         MOVE_ITEM_FIRST        = settings.get_boolean(PrefsFields.MOVE_ITEM_FIRST);
         NOTIFY_ON_COPY         = settings.get_boolean(PrefsFields.NOTIFY_ON_COPY);
         NOTIFY_ON_CYCLE        = settings.get_boolean(PrefsFields.NOTIFY_ON_CYCLE);
-        CONFIRM_ON_CLEAR       = settings.get_boolean(PrefsFields.CONFIRM_ON_CLEAR);
         ENABLE_KEYBINDING      = settings.get_boolean(PrefsFields.ENABLE_KEYBINDING);
         MAX_TOPBAR_LENGTH      = settings.get_int(PrefsFields.TOPBAR_PREVIEW_SIZE);
         TOPBAR_DISPLAY_MODE    = settings.get_int(PrefsFields.TOPBAR_DISPLAY_MODE_ID);

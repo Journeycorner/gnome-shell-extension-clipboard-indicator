@@ -194,7 +194,6 @@ class Settings {
         this.schema.bind(PrefsFields.STRIP_TEXT, this.field_strip_text, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.PASTE_BUTTON, this.field_paste_button, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.PINNED_ON_BOTTOM, this.field_pinned_on_bottom, 'active', Gio.SettingsBindFlags.DEFAULT);
-        this.schema.bind(PrefsFields.ENABLE_KEYBINDING, this.field_keybinding_activation, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.CLEAR_ON_BOOT, this.field_clear_on_boot, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.PASTE_ON_SELECT, this.field_paste_on_select, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.CACHE_IMAGES, this.field_cache_images, 'active', Gio.SettingsBindFlags.DEFAULT);
@@ -217,20 +216,10 @@ class Settings {
     }
 
     #shortcuts = {
-        [PrefsFields.BINDING_PRIVATE_MODE]: _("Private mode"),
         [PrefsFields.BINDING_TOGGLE_MENU]: _("Toggle the menu"),
-        [PrefsFields.BINDING_CLEAR_HISTORY]: _("Clear history"),
-        [PrefsFields.BINDING_PREV_ENTRY]: _("Previous entry"),
-        [PrefsFields.BINDING_NEXT_ENTRY]: _("Next entry")
     };
 
     #buildShorcuts (group) {
-        this.field_keybinding_activation = new Adw.SwitchRow({
-            title: _("Enable shortcuts")
-        });
-
-        group.add(this.field_keybinding_activation);
-
         for (const [pref, title] of Object.entries(this.#shortcuts)) {
             const row = new Adw.ActionRow({
                 title

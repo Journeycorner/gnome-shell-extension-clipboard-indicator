@@ -926,11 +926,7 @@ const ClipboardIndicator = GObject.registerClass({
 
     _bindShortcuts () {
         this._unbindShortcuts();
-        this._bindShortcut(PrefsFields.BINDING_CLEAR_HISTORY, this._removeAll);
-        this._bindShortcut(PrefsFields.BINDING_PREV_ENTRY, this._previousEntry);
-        this._bindShortcut(PrefsFields.BINDING_NEXT_ENTRY, this._nextEntry);
         this._bindShortcut(PrefsFields.BINDING_TOGGLE_MENU, this._toggleMenu);
-        this._bindShortcut(PrefsFields.BINDING_PRIVATE_MODE, this.togglePrivateMode);
     }
 
     _unbindShortcuts () {

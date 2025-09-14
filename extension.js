@@ -166,42 +166,10 @@ const ClipboardIndicator = GObject.registerClass({
         let lastIdx = clipHistory.length - 1;
         let clipItemsArr = that.clipItemsRadioGroup;
 
-        /* This create the search entry, which is add to a menuItem.
-        The searchEntry is connected to the function for research.
-        The menu itself is connected to some shitty hack in order to
-        grab the focus of the keyboard. */
-        that._entryItem = new PopupMenu.PopupBaseMenuItem({
-            reactive: false,
-            can_focus: false
-        });
-        that.searchEntry = new St.Entry({
-            name: 'searchEntry',
-            style_class: 'search-entry',
-            can_focus: true,
-            hint_text: _('Type here to search...'),
-            track_hover: true,
-            x_expand: true,
-            y_expand: true,
-            primary_icon: new St.Icon({ icon_name: 'edit-find-symbolic' })
-        });
-
-        that.searchEntry.get_clutter_text().connect(
-            'text-changed',
-            that._onSearchTextChanged.bind(that)
-        );
-
-        that._entryItem.add_child(that.searchEntry);
-
         that.menu.connect('open-state-changed', (self, open) => {
             this._setFocusOnOpenTimeout = setTimeout(() => {
                 if (open) {
-                    if (this.clipItemsRadioGroup.length > 0) {
-                        that.searchEntry.set_text('');
-                        global.stage.set_key_focus(that.searchEntry);
-                    }
-                    else {
-                        global.stage.set_key_focus(that.privateModeMenuItem);
-                    }
+                    this.#focusFirstVisibleItem();
                 }
             }, 50);
         });
@@ -311,7 +279,6 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     #hideElements() {
-        if (this.menu.box.contains(this._entryItem)) this.menu.box.remove_child(this._entryItem);
         if (this.menu.box.contains(this.favoritesSeparator)) this.menu.box.remove_child(this.favoritesSeparator);
         if (this.menu.box.contains(this.historySeparator)) this.menu.box.remove_child(this.historySeparator);
         if (this.menu.box.contains(this.clearMenuItem)) this.menu.box.remove_child(this.clearMenuItem);
@@ -320,9 +287,6 @@ const ClipboardIndicator = GObject.registerClass({
 
     #showElements() {
         if (this.clipItemsRadioGroup.length > 0) {
-            if (this.menu.box.contains(this._entryItem) === false) {
-                this.menu.box.insert_child_at_index(this._entryItem, 0);
-            }
             if (this.menu.box.contains(this.clearMenuItem) === false) {
                 this.menu.box.insert_child_below(this.clearMenuItem, this.settingsMenuItem);
             }
@@ -353,32 +317,31 @@ const ClipboardIndicator = GObject.registerClass({
         }
     }
 
+    #focusFirstVisibleItem () {
+        if (this.clipItemsRadioGroup.length > 0) {
+            const orderedItems = PINNED_ON_BOTTOM
+                ? this.historySection._getMenuItems().concat(this.favoritesSection._getMenuItems())
+                : this.favoritesSection._getMenuItems().concat(this.historySection._getMenuItems());
+
+            const firstVisible = orderedItems.find(item => item.actor.visible);
+            if (firstVisible) {
+                firstVisible.actor.grab_key_focus();
+                return;
+            }
+        }
+
+        // Fallback: focus the private mode switch item
+        if (this.privateModeMenuItem && this.privateModeMenuItem.actor) {
+            this.privateModeMenuItem.actor.grab_key_focus();
+        }
+    }
+
     #renderEmptyState () {
         this.#hideElements();
         this.menu.box.insert_child_at_index(this.emptyStateSection, 0);
     }
 
-    /* When text change, this function will check, for each item of the
-    historySection and favoritesSestion, if it should be visible or not (based on words contained
-    in the clipContents attribute of the item). It doesn't destroy or create
-    items. It the entry is empty, the section is restored with all items
-    set as visible. */
-    _onSearchTextChanged () {
-        let searchedText = this.searchEntry.get_text().toLowerCase();
-
-        if(searchedText === '') {
-            this._getAllIMenuItems().forEach(function(mItem){
-                mItem.actor.visible = true;
-            });
-        }
-        else {
-            this._getAllIMenuItems().forEach(function(mItem){
-                let text = mItem.clipContents.toLowerCase();
-                let isMatching = text.indexOf(searchedText) >= 0;
-                mItem.actor.visible = isMatching
-            });
-        }
-    }
+    // Removed search functionality; no-op
 
     _truncate (string, length) {
         let shortened = string.replace(/\s+/g, ' ');

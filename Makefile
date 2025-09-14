@@ -1,5 +1,5 @@
 MODULES = *.js metadata.json stylesheet.css LICENSE.rst README.rst schemas/
-INSTALLPATH=~/.local/share/gnome-shell/extensions/clipboard-indicator@tudmotu.com/
+INSTALLPATH=~/.local/share/gnome-shell/extensions/clipboard@journeycorner.com/
 
 all: compile-locales compile-settings
 

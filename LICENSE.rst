@@ -3,6 +3,7 @@ The MIT License (MIT)
 ======================
 
 Copyright (c) 2014, Yotam Bar-On
+Copyright (c) 2025, Journey Corner
 -----------------------------------------
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

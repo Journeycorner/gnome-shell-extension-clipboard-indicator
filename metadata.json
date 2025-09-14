@@ -3,9 +3,9 @@
         "48",
         "49"
     ],
-    "uuid": "clipboard-indicator@tudmotu.com",
-    "name": "Clipboard Indicator",
-    "description": "The most popular clipboard manager for GNOME, with over 1M downloads",
+    "uuid": "clipboard@journeycorner.com",
+    "name": "Clipboard",
+    "description": "Fork of Clipboard Indicator; more minimal and user‑friendly with privacy auto‑detection",
     "url": "https://github.com/Tudmotu/gnome-shell-extension-clipboard-indicator",
     "gettext-domain": "clipboard-indicator",
     "settings-schema": "org.gnome.shell.extensions.clipboard-indicator"

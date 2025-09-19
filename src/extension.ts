@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /*
  * Clipboard Indicator main entry point.
  *
@@ -47,13 +49,14 @@ let DISABLE_DOWN_ARROW        = false;
 let STRIP_TEXT                = false;
 let PASTE_BUTTON              = true;
 let PINNED_ON_BOTTOM          = false;
-let CACHE_IMAGES              = true;
+let CACHE_IMAGES              = false;
 let EXCLUDED_APPS             = [];
 
 // Extension lifecycle entry: registers the panel button and cleans it up on
 // disable. The heavy lifting lives in the ClipboardIndicator class below.
 export default class ClipboardIndicatorExtension extends Extension {
     enable () {
+        console.log("lala");
         this.clipboardIndicator = new ClipboardIndicator({
             clipboard: St.Clipboard.get_default(),
             settings: this.getSettings(),

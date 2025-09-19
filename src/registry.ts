@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import St from 'gi://St';

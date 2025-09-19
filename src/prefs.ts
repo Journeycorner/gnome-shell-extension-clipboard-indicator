@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import Adw from 'gi://Adw';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';

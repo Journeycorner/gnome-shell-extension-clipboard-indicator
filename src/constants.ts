@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 export const PrefsFields = {
     HISTORY_SIZE           : 'history-size',
     PREVIEW_SIZE           : 'preview-size',

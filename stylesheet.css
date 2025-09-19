@@ -59,8 +59,8 @@
 .clipboard-menu-img-preview {
     border:solid 1px white;
     overflow:hidden;
-    width:1.5em;
-    height:1.5em;
+    width:3em;
+    height:3em;
     margin:0;
     padding:0;
 }

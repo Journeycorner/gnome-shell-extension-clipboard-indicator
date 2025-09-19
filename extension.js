@@ -1,3 +1,12 @@
+/*
+ * Clipboard Indicator main entry point.
+ *
+ * This module wires the GNOME Shell extension lifecycle to the clipboard
+ * history UI. It runs under GJS, so modules are pulled from GNOME's platform
+ * libraries and the Shell runtime. The indicator itself lives on the panel and
+ * mirrors clipboard changes inside a popup history menu.
+ */
+
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
@@ -16,6 +25,7 @@ import { Registry, ClipboardEntry } from './registry.js';
 import { PrefsFields } from './constants.js';
 import { Keyboard } from './keyboard.js';
 
+// Preferences cached from schema; they are mutated via _loadSettings.
 const CLIPBOARD_TYPE = St.ClipboardType.CLIPBOARD;
 
 const INDICATOR_ICON = 'edit-paste-symbolic';
@@ -40,6 +50,8 @@ let PINNED_ON_BOTTOM          = false;
 let CACHE_IMAGES              = true;
 let EXCLUDED_APPS             = [];
 
+// Extension lifecycle entry: registers the panel button and cleans it up on
+// disable. The heavy lifting lives in the ClipboardIndicator class below.
 export default class ClipboardIndicatorExtension extends Extension {
     enable () {
         this.clipboardIndicator = new ClipboardIndicator({
@@ -59,6 +71,8 @@ export default class ClipboardIndicatorExtension extends Extension {
     }
 }
 
+// PanelMenu.Button subclass that renders the indicator, popup history, and all
+// clipboard interactions.
 const ClipboardIndicator = GObject.registerClass({
     GTypeName: 'ClipboardIndicator'
 }, class ClipboardIndicator extends PanelMenu.Button {
@@ -78,6 +92,7 @@ const ClipboardIndicator = GObject.registerClass({
         super.destroy();
     }
 
+    // Build the visible button, wire up settings, and kick off history loading.
     _init (extension) {
         super._init(0.0, "ClipboardIndicator");
         this.extension = extension;
@@ -146,6 +161,7 @@ const ClipboardIndicator = GObject.registerClass({
         });
     }
 
+    // Sync the panel button preview with the newest clipboard entry.
     _updateIndicatorContent(entry) {
         if (this.preventIndicatorUpdate || (TOPBAR_DISPLAY_MODE !== 1 && TOPBAR_DISPLAY_MODE !== 2)) {
             return;
@@ -175,6 +191,7 @@ const ClipboardIndicator = GObject.registerClass({
         }
     }
 
+    // Populate the popup with existing registry entries and set up sections.
     async _buildMenu () {
         const clipHistory = await this._getCache();
         const lastIdx = clipHistory.length - 1;
@@ -309,6 +326,8 @@ const ClipboardIndicator = GObject.registerClass({
         return shortened;
     }
 
+    // Render either text or an image preview for a menu item depending on the
+    // clipboard entry type.
     _setEntryLabel (menuItem) {
         const { entry } = menuItem;
         if (entry.isText()) {
@@ -359,6 +378,8 @@ const ClipboardIndicator = GObject.registerClass({
         }
     }
 
+    // Create the popup menu row for a new clipboard entry and install
+    // shortcuts/paste actions.
     _addEntry (entry, autoSelect, autoSetClip) {
         let menuItem = new PopupMenu.PopupMenuItem('');
 

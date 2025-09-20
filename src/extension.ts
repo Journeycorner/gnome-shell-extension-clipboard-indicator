@@ -47,8 +47,6 @@ let CLEAR_ON_BOOT             = false;
 let PASTE_ON_SELECT           = false;
 let DISABLE_DOWN_ARROW        = false;
 let STRIP_TEXT                = false;
-let PASTE_BUTTON              = true;
-let PINNED_ON_BOTTOM          = false;
 let CACHE_IMAGES              = false;
 let EXCLUDED_APPS             = [];
 
@@ -205,21 +203,7 @@ const ClipboardIndicator = GObject.registerClass({
             }, 50);
         });
 
-        // Create menu sections for items
-        // Favorites
-        this.favoritesSection = new PopupMenu.PopupMenuSection();
-
-        this.scrollViewFavoritesMenuSection = new PopupMenu.PopupMenuSection();
-        this.favoritesScrollView = new St.ScrollView({
-            style_class: 'ci-history-menu-section',
-            overlay_scrollbars: true
-        });
-        this.favoritesScrollView.add_child(this.favoritesSection.actor);
-
-        this.scrollViewFavoritesMenuSection.actor.add_child(this.favoritesScrollView);
-        this.favoritesSeparator = new PopupMenu.PopupSeparatorMenuItem();
-
-        // History
+        // Create menu section for history items
         this.historySection = new PopupMenu.PopupMenuSection();
 
         this.scrollViewMenuSection = new PopupMenu.PopupMenuSection();
@@ -230,17 +214,7 @@ const ClipboardIndicator = GObject.registerClass({
         this.historyScrollView.add_child(this.historySection.actor);
 
         this.scrollViewMenuSection.actor.add_child(this.historyScrollView);
-
-        // Separator above history removed
-
-        // Add sections ordered according to settings
-        if (PINNED_ON_BOTTOM) {
-            this.menu.addMenuItem(this.scrollViewMenuSection);
-            this.menu.addMenuItem(this.scrollViewFavoritesMenuSection);
-        } else {
-            this.menu.addMenuItem(this.scrollViewFavoritesMenuSection);
-            this.menu.addMenuItem(this.scrollViewMenuSection);
-        }
+        this.menu.addMenuItem(this.scrollViewMenuSection);
 
         // Removed bottom links: Private mode, Clear history, Settings
 
@@ -270,7 +244,6 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _hideElements() {
-        if (this.menu.box.contains(this.favoritesSeparator)) this.menu.box.remove_child(this.favoritesSeparator);
         if (this.menu.box.contains(this.emptyStateSection)) this.menu.box.remove_child(this.emptyStateSection);
     }
 
@@ -279,17 +252,6 @@ const ClipboardIndicator = GObject.registerClass({
             if (this.menu.box.contains(this.emptyStateSection) === true) {
                 this.menu.box.remove_child(this.emptyStateSection);
             }
-
-            if (this.favoritesSection._getMenuItems().length > 0) {
-                if (this.menu.box.contains(this.favoritesSeparator) === false) {
-                    this.menu.box.insert_child_above(this.favoritesSeparator, this.scrollViewFavoritesMenuSection.actor);
-                }
-            }
-            else if (this.menu.box.contains(this.favoritesSeparator) === true) {
-                this.menu.box.remove_child(this.favoritesSeparator);
-            }
-
-            // Bottom history separator removed
         }
         else if (this.menu.box.contains(this.emptyStateSection) === false) {
             this._renderEmptyState();
@@ -298,9 +260,7 @@ const ClipboardIndicator = GObject.registerClass({
 
     _focusFirstVisibleItem () {
         if (this.clipItemsRadioGroup.length > 0) {
-            const orderedItems = PINNED_ON_BOTTOM
-                ? this.historySection._getMenuItems().concat(this.favoritesSection._getMenuItems())
-                : this.favoritesSection._getMenuItems().concat(this.historySection._getMenuItems());
+            const orderedItems = this.historySection._getMenuItems();
 
             const firstVisible = orderedItems.find(item => item.actor.visible);
             if (firstVisible) {
@@ -391,9 +351,7 @@ const ClipboardIndicator = GObject.registerClass({
         menuItem.buttonPressId = menuItem.connect('activate',
             autoSet => this._onMenuItemSelectedAndMenuClose(menuItem, autoSet));
         menuItem.connect('key-focus-in', () => {
-            const viewToScroll = menuItem.entry.isFavorite() ?
-                this.favoritesScrollView : this.historyScrollView;
-            AnimationUtils.ensureActorVisibleInScrollView(viewToScroll, menuItem);
+            AnimationUtils.ensureActorVisibleInScrollView(this.historyScrollView, menuItem);
         });
         menuItem.actor.connect('key-press-event', (actor, event) => {
             switch (event.get_key_symbol()) {
@@ -421,35 +379,7 @@ const ClipboardIndicator = GObject.registerClass({
         this._setEntryLabel(menuItem);
         this.clipItemsRadioGroup.push(menuItem);
 
-        // Favorite button removed
-
-        // Paste button
-        menuItem.pasteBtn = new St.Button({
-            style_class: 'ci-action-btn',
-            can_focus: true,
-            child: new St.Icon({
-                icon_name: 'edit-paste-symbolic',
-                style_class: 'system-status-icon'
-            }),
-            x_align: Clutter.ActorAlign.END,
-            x_expand: false,
-            y_expand: true,
-            visible: PASTE_BUTTON
-        });
-
-        menuItem.pasteBtn.connect('clicked',
-            () => this._pasteItem(menuItem)
-        );
-
-        menuItem.actor.add_child(menuItem.pasteBtn);
-
-        // Delete button removed
-
-        if (entry.isFavorite()) {
-            this.favoritesSection.addMenuItem(menuItem, 0);
-        } else {
-            this.historySection.addMenuItem(menuItem, 0);
-        }
+        this.historySection.addMenuItem(menuItem, 0);
 
         if (autoSelect === true) {
             this._selectMenuItem(menuItem, autoSetClip);
@@ -631,7 +561,7 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _getAllIMenuItems () {
-        return this.historySection._getMenuItems().concat(this.favoritesSection._getMenuItems());
+        return this.historySection._getMenuItems();
     }
 
     _setupListener () {
@@ -731,7 +661,6 @@ const ClipboardIndicator = GObject.registerClass({
         PRIVATEMODE = this.privateModeMenuItem.state;
         // We hide the history in private ModeTypee because it will be out of sync (selected item will not reflect clipboard)
         this.scrollViewMenuSection.actor.visible = !PRIVATEMODE;
-        this.scrollViewFavoritesMenuSection.actor.visible = !PRIVATEMODE;
         // If we get out of private mode then we restore the clipboard to old state
         if (!PRIVATEMODE) {
             let selectList = this.clipItemsRadioGroup.filter((item) => !!item.currentlySelected);
@@ -873,8 +802,6 @@ const ClipboardIndicator = GObject.registerClass({
         PASTE_ON_SELECT        = settings.get_boolean(PrefsFields.PASTE_ON_SELECT);
         DISABLE_DOWN_ARROW     = settings.get_boolean(PrefsFields.DISABLE_DOWN_ARROW);
         STRIP_TEXT             = settings.get_boolean(PrefsFields.STRIP_TEXT);
-        PASTE_BUTTON           = settings.get_boolean(PrefsFields.PASTE_BUTTON);
-        PINNED_ON_BOTTOM       = settings.get_boolean(PrefsFields.PINNED_ON_BOTTOM);
         CACHE_IMAGES           = settings.get_boolean(PrefsFields.CACHE_IMAGES);
         EXCLUDED_APPS          = settings.get_strv(PrefsFields.EXCLUDED_APPS);
     }
@@ -890,7 +817,6 @@ const ClipboardIndicator = GObject.registerClass({
             // Re-set menu-items labels in case preview size changed
             this._getAllIMenuItems().forEach((mItem) => {
                 this._setEntryLabel(mItem);
-                mItem.pasteBtn.visible = PASTE_BUTTON;
             });
 
             //update topbar

@@ -1,7 +1,6 @@
 <schemalist gettext-domain="gnome-shell-extensions">
     <schema id="org.gnome.shell.extensions.clipboard-indicator"
         path="/org/gnome/shell/extensions/clipboard-indicator/">
-
     <key name="paste-button" type="b">
         <default>true</default>
         <summary>Add button to paste an entry</summary>

@@ -102,15 +102,15 @@ export class Registry {
                                 clipboardEntries = clipboardEntries
                                     .filter(entry => entry !== null);
 
-                                let registryNoFavorite = clipboardEntries
+                                let favoriteEntries = clipboardEntries
                                     .filter(entry => entry.isFavorite());
 
-                                while (registryNoFavorite.length > max_size) {
-                                    let oldestNoFavorite = registryNoFavorite.shift();
-                                    let itemIdx = clipboardEntries.indexOf(oldestNoFavorite);
+                                while (favoriteEntries.length > max_size) {
+                                    const oldestFavorite = favoriteEntries.shift();
+                                    const itemIdx = clipboardEntries.indexOf(oldestFavorite);
                                     clipboardEntries.splice(itemIdx,1);
 
-                                    registryNoFavorite = clipboardEntries.filter(
+                                    favoriteEntries = clipboardEntries.filter(
                                         entry => entry.isFavorite()
                                     );
                                 }
@@ -193,7 +193,7 @@ export class Registry {
         const CANCELLABLE = null;
         try {
             const folder = Gio.file_new_for_path(this.REGISTRY_DIR);
-            const enumerator = folder.enumerate_children("", 1, CANCELLABLE);
+            const enumerator = folder.enumerate_children('', FileQueryInfoFlags.NONE, CANCELLABLE);
 
             let file;
             while ((file = enumerator.iterate(CANCELLABLE)[2]) != null) {
@@ -211,10 +211,6 @@ export class ClipboardEntry {
     #mimetype;
     #bytes;
     #favorite;
-
-    static #decode (contents) {
-        return Uint8Array.from(contents.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
-    }
 
     static __isText (mimetype) {
         return mimetype.startsWith('text/') ||
@@ -271,16 +267,6 @@ export class ClipboardEntry {
         this.#mimetype = mimetype;
         this.#bytes = bytes;
         this.#favorite = favorite;
-    }
-
-    #encode () {
-        if (this.isText()) {
-            return this.getStringValue();
-        }
-
-        return [...this.#bytes]
-            .map(x => x.toString(16).padStart(2, '0'))
-            .join('');
     }
 
     getStringValue () {

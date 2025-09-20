@@ -95,7 +95,6 @@ class Settings {
             title: _("Move item to the top after selection")
         });
 
-
         this.field_paste_button = new Adw.SwitchRow({
             title: _("Show paste buttons"),
             subtitle: _("Adds a paste button to each entry that lets you paste it directly")
@@ -105,6 +104,7 @@ class Settings {
             title: _("Place the pinned section on the bottom"),
             subtitle: _("Requires restarting the extension")
         });
+
 
         this.field_clear_on_boot = new Adw.SwitchRow({
             title: _("Clear clipboard history on system reboot")

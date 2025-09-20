@@ -32,29 +32,10 @@ const CLIPBOARD_TYPE = St.ClipboardType.CLIPBOARD;
 
 const INDICATOR_ICON = 'edit-paste-symbolic';
 
-let DELAYED_SELECTION_TIMEOUT = 750;
-let MAX_REGISTRY_LENGTH       = 15;
-let MAX_ENTRY_LENGTH          = 50;
-let CACHE_ONLY_FAVORITE       = false;
-let MOVE_ITEM_FIRST           = false;
-let ENABLE_KEYBINDING         = true;
-let PRIVATEMODE               = false;
-let NOTIFY_ON_COPY            = true;
-let NOTIFY_ON_CYCLE           = true;
-let MAX_TOPBAR_LENGTH         = 15;
-let TOPBAR_DISPLAY_MODE       = 1; //0 - only icon, 1 - only clipboard content, 2 - both, 3 - neither
-let CLEAR_ON_BOOT             = false;
-let PASTE_ON_SELECT           = false;
-let DISABLE_DOWN_ARROW        = false;
-let STRIP_TEXT                = false;
-let CACHE_IMAGES              = false;
-let EXCLUDED_APPS             = [];
-
 // Extension lifecycle entry: registers the panel button and cleans it up on
 // disable. The heavy lifting lives in the ClipboardIndicator class below.
 export default class ClipboardIndicatorExtension extends Extension {
     enable () {
-        console.log("lala");
         this.clipboardIndicator = new ClipboardIndicator({
             clipboard: St.Clipboard.get_default(),
             settings: this.getSettings(),
@@ -68,7 +49,6 @@ export default class ClipboardIndicatorExtension extends Extension {
     disable () {
         this.clipboardIndicator.destroy();
         this.clipboardIndicator = null;
-        EXCLUDED_APPS = [];
     }
 }
 
@@ -77,10 +57,6 @@ export default class ClipboardIndicatorExtension extends Extension {
 const ClipboardIndicator = GObject.registerClass({
     GTypeName: 'ClipboardIndicator'
 }, class ClipboardIndicator extends PanelMenu.Button {
-    _refreshInProgress = false;
-    // Internal notification source (kept as pseudo-private)
-    _notifSource = null;
-
     destroy () {
         this._disconnectSettings();
         this._unbindShortcuts();
@@ -88,7 +64,8 @@ const ClipboardIndicator = GObject.registerClass({
         this._clearDelayedSelectionTimeout();
         this._clearTimeouts();
         this._stopScreenShareWatcher();
-        this.keyboard.destroy();
+        this._keyboard.destroy();
+        this._clipItems = [];
 
         super.destroy();
     }
@@ -96,39 +73,64 @@ const ClipboardIndicator = GObject.registerClass({
     // Build the visible button, wire up settings, and kick off history loading.
     _init (extension) {
         super._init(0.0, "ClipboardIndicator");
-        this.extension = extension;
-        this.registry = new Registry(extension);
-        this.keyboard = new Keyboard();
+        this._clipboard = extension.clipboard;
+        this._settings = extension.settings;
+        this._registry = new Registry({ settings: this._settings, uuid: extension.uuid });
+        this._keyboard = new Keyboard();
+
+        this._refreshInProgress = false;
+        this._notifSource = null;
         this._screenShareWatchId = 0;
-        this._screenShareActive = false;
         this._screenShareSignalIds = [];
-        this._settingsChangedId = null;
-        this._selectionOwnerChangedId = null;
-        this._historyLabel = null;
+        this._settingsChangedId = 0;
+        this._selection = null;
+        this._selectionOwnerChangedId = 0;
+        this._setFocusOnOpenTimeout = null;
+        this._imagePreviewTimeout = null;
+        this._pastingKeypressTimeout = null;
+        this._pastingResetTimeout = null;
+        this._delayedSelectionTimeoutId = null;
+
+        this._clipItems = [];
+        this._icon = null;
         this._buttonText = null;
+        this._buttonImgPreview = null;
+        this._downArrow = null;
+        this._historySection = null;
+        this._historyScrollView = null;
+        this._scrollViewMenuSection = null;
+        this._emptyStateSection = null;
+        this._shortcutBindingIds = [];
+        this._hbox = null;
 
-        // Minimal private mode controller to allow programmatic toggling
-        this.privateModeMenuItem = {
-            state: false,
-            toggle: () => {
-                this.privateModeMenuItem.state = !this.privateModeMenuItem.state;
-                this._onPrivateModeSwitch();
-            },
-            setState: (state) => {
-                if (this.privateModeMenuItem.state === state) return;
-                this.privateModeMenuItem.state = state;
-                this._onPrivateModeSwitch();
-            },
-        };
+        this._preventIndicatorUpdate = false;
+        this._privateMode = false;
 
-        this._shortcutsBindingIds = [];
-        this.clipItemsRadioGroup = [];
+        this._delayedSelectionTimeout = 750;
+        this._maxRegistryLength = 15;
+        this._maxEntryLength = 50;
+        this._cacheOnlyFavorite = false;
+        this._moveItemFirst = false;
+        this._enableKeybinding = true;
+        this._notifyOnCopy = true;
+        this._notifyOnCycle = true;
+        this._maxTopbarLength = 15;
+        this._topbarDisplayMode = 1;
+        this._clearOnBoot = false;
+        this._pasteOnSelect = false;
+        this._disableDownArrow = false;
+        this._stripText = false;
+        this._cacheImages = false;
+        this._excludedApps = [];
+        this._pasteButtonSetting = false;
+        this._pinnedOnBottom = false;
 
-        let hbox = new St.BoxLayout({
+        const hbox = new St.BoxLayout({
             style_class: 'panel-status-menu-box clipboard-indicator-hbox'
         });
+        this._hbox = hbox;
 
-        this.icon = new St.Icon({
+        this._icon = new St.Icon({
             icon_name: INDICATOR_ICON,
             style_class: 'system-status-icon clipboard-indicator-icon'
         });
@@ -142,16 +144,17 @@ const ClipboardIndicator = GObject.registerClass({
             style_class: 'clipboard-indicator-topbar-preview'
         });
 
-        hbox.add_child(this.icon);
+        hbox.add_child(this._icon);
         hbox.add_child(this._buttonText);
         hbox.add_child(this._buttonImgPreview);
         this._downArrow = PopupMenu.arrowIcon(St.Side.BOTTOM);
         hbox.add_child(this._downArrow);
         this.add_child(hbox);
-        this._createHistoryLabel();
         this._loadSettings();
 
-        if (CLEAR_ON_BOOT) this.registry.clearCacheFolder();
+        if (this._clearOnBoot) {
+            this._registry.clearCacheFolder();
+        }
         // No dialog manager
         this._buildMenu().then(() => {
             this._updateTopbarLayout();
@@ -162,22 +165,22 @@ const ClipboardIndicator = GObject.registerClass({
 
     // Sync the panel button preview with the newest clipboard entry.
     _updateIndicatorContent(entry) {
-        if (this.preventIndicatorUpdate || (TOPBAR_DISPLAY_MODE !== 1 && TOPBAR_DISPLAY_MODE !== 2)) {
+        if (this._preventIndicatorUpdate || (this._topbarDisplayMode !== 1 && this._topbarDisplayMode !== 2)) {
             return;
         }
 
-        if (!entry || PRIVATEMODE) {
-        this._buttonImgPreview.destroy_all_children();
-        this._buttonText.set_text("...")
+        if (!entry || this._privateMode) {
+            this._buttonImgPreview.destroy_all_children();
+            this._buttonText.set_text('...');
         } else {
             if (entry.isText()) {
-                this._buttonText.set_text(this._truncate(entry.getStringValue(), MAX_TOPBAR_LENGTH));
+                this._buttonText.set_text(this._truncate(this._getEntryText(entry), this._maxTopbarLength));
                 this._buttonImgPreview.destroy_all_children();
             }
             else if (entry.isImage()) {
                 this._buttonText.set_text('');
                 this._buttonImgPreview.destroy_all_children();
-                this.registry.getEntryAsImage(entry).then(img => {
+                this._registry.getEntryAsImage(entry).then(img => {
                     img.add_style_class_name('clipboard-indicator-img-preview');
                     img.y_align = Clutter.ActorAlign.CENTER;
 
@@ -204,31 +207,31 @@ const ClipboardIndicator = GObject.registerClass({
         });
 
         // Create menu section for history items
-        this.historySection = new PopupMenu.PopupMenuSection();
+        this._historySection = new PopupMenu.PopupMenuSection();
 
-        this.scrollViewMenuSection = new PopupMenu.PopupMenuSection();
-        this.historyScrollView = new St.ScrollView({
+        this._scrollViewMenuSection = new PopupMenu.PopupMenuSection();
+        this._historyScrollView = new St.ScrollView({
             style_class: 'ci-main-menu-section ci-history-menu-section',
             overlay_scrollbars: true
         });
-        this.historyScrollView.add_child(this.historySection.actor);
+        this._historyScrollView.add_child(this._historySection.actor);
 
-        this.scrollViewMenuSection.actor.add_child(this.historyScrollView);
-        this.menu.addMenuItem(this.scrollViewMenuSection);
+        this._scrollViewMenuSection.actor.add_child(this._historyScrollView);
+        this.menu.addMenuItem(this._scrollViewMenuSection);
 
         // Removed bottom links: Private mode, Clear history, Settings
 
         // Empty state section
-        this.emptyStateSection = new St.BoxLayout({
+        this._emptyStateSection = new St.BoxLayout({
             style_class: 'clipboard-indicator-empty-state',
             vertical: true
         });
-        this.emptyStateSection.add_child(new St.Icon({
+        this._emptyStateSection.add_child(new St.Icon({
             icon_name: INDICATOR_ICON,
             style_class: 'system-status-icon clipboard-indicator-icon',
             x_align: Clutter.ActorAlign.CENTER
         }));
-        this.emptyStateSection.add_child(new St.Label({
+        this._emptyStateSection.add_child(new St.Label({
             text: _('Clipboard is empty'),
             x_align: Clutter.ActorAlign.CENTER
         }));
@@ -237,30 +240,32 @@ const ClipboardIndicator = GObject.registerClass({
         clipHistory.forEach(entry => this._addEntry(entry));
 
         if (lastIdx >= 0) {
-            this._selectMenuItem(this.clipItemsRadioGroup[lastIdx]);
+            this._selectMenuItem(this._clipItems[lastIdx]);
         }
         
         this._showElements();
     }
 
     _hideElements() {
-        if (this.menu.box.contains(this.emptyStateSection)) this.menu.box.remove_child(this.emptyStateSection);
+        if (this.menu.box.contains(this._emptyStateSection)) {
+            this.menu.box.remove_child(this._emptyStateSection);
+        }
     }
 
     _showElements() {
-        if (this.clipItemsRadioGroup.length > 0) {
-            if (this.menu.box.contains(this.emptyStateSection) === true) {
-                this.menu.box.remove_child(this.emptyStateSection);
+        if (this._clipItems.length > 0) {
+            if (this.menu.box.contains(this._emptyStateSection) === true) {
+                this.menu.box.remove_child(this._emptyStateSection);
             }
         }
-        else if (this.menu.box.contains(this.emptyStateSection) === false) {
+        else if (this.menu.box.contains(this._emptyStateSection) === false) {
             this._renderEmptyState();
         }
     }
 
     _focusFirstVisibleItem () {
-        if (this.clipItemsRadioGroup.length > 0) {
-            const orderedItems = this.historySection._getMenuItems();
+        if (this._clipItems.length > 0) {
+            const orderedItems = this._historySection._getMenuItems();
 
             const firstVisible = orderedItems.find(item => item.actor.visible);
             if (firstVisible) {
@@ -274,7 +279,7 @@ const ClipboardIndicator = GObject.registerClass({
 
     _renderEmptyState () {
         this._hideElements();
-        this.menu.box.insert_child_at_index(this.emptyStateSection, 0);
+        this.menu.box.insert_child_at_index(this._emptyStateSection, 0);
     }
 
     _truncate (string, length) {
@@ -287,15 +292,23 @@ const ClipboardIndicator = GObject.registerClass({
         return shortened;
     }
 
+    _getEntryText (entry) {
+        const value = entry.getStringValue();
+        if (this._stripText && typeof value === 'string') {
+            return value.trim();
+        }
+        return value;
+    }
+
     // Render either text or an image preview for a menu item depending on the
     // clipboard entry type.
     _setEntryLabel (menuItem) {
         const { entry } = menuItem;
         if (entry.isText()) {
-            menuItem.label.set_text(this._truncate(entry.getStringValue(), MAX_ENTRY_LENGTH));
+            menuItem.label.set_text(this._truncate(this._getEntryText(entry), this._maxEntryLength));
         }
         else if (entry.isImage()) {
-            this.registry.getEntryAsImage(entry).then(img => {
+            this._registry.getEntryAsImage(entry).then(img => {
                 img.add_style_class_name('clipboard-menu-img-preview');
                 if (menuItem.previewImage) {
                     menuItem.remove_child(menuItem.previewImage);
@@ -307,25 +320,25 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _findNextMenuItem (currentMenutItem) {
-        let currentIndex = this.clipItemsRadioGroup.indexOf(currentMenutItem);
+        const currentIndex = this._clipItems.indexOf(currentMenutItem);
 
         // for only one item
-        if(this.clipItemsRadioGroup.length === 1) {
+        if (this._clipItems.length === 1) {
             return null;
         }
 
         // when focus is in middle of the displayed list
         for (let i = currentIndex - 1; i >= 0; i--) {
-            let menuItem = this.clipItemsRadioGroup[i];
+            const menuItem = this._clipItems[i];
             if (menuItem.actor.visible) {
                 return menuItem;
             }
         }
 
         // when focus is at the last element of the displayed list
-        let beforeMenuItem = this.clipItemsRadioGroup[currentIndex + 1];
-        if(beforeMenuItem.actor.visible){
-          return beforeMenuItem; 
+        const beforeMenuItem = this._clipItems[currentIndex + 1];
+        if (beforeMenuItem.actor.visible) {
+            return beforeMenuItem;
         }
 
         return null;
@@ -346,12 +359,12 @@ const ClipboardIndicator = GObject.registerClass({
 
         menuItem.menu = this.menu;
         menuItem.entry = entry;
-        menuItem.clipContents = entry.getStringValue();
-        menuItem.radioGroup = this.clipItemsRadioGroup;
+        menuItem.clipContents = this._getEntryText(entry);
+        menuItem.radioGroup = this._clipItems;
         menuItem.buttonPressId = menuItem.connect('activate',
             autoSet => this._onMenuItemSelectedAndMenuClose(menuItem, autoSet));
         menuItem.connect('key-focus-in', () => {
-            AnimationUtils.ensureActorVisibleInScrollView(this.historyScrollView, menuItem);
+            AnimationUtils.ensureActorVisibleInScrollView(this._historyScrollView, menuItem);
         });
         menuItem.actor.connect('key-press-event', (actor, event) => {
             switch (event.get_key_symbol()) {
@@ -368,7 +381,7 @@ const ClipboardIndicator = GObject.registerClass({
                     break;
                 case Clutter.KEY_KP_Enter:
                 case Clutter.KEY_Return:
-                    if (PASTE_ON_SELECT) {
+                    if (this._pasteOnSelect) {
                         this._pasteItem(menuItem);
                     }
                     this._onMenuItemSelectedAndMenuClose(menuItem, true);
@@ -377,9 +390,9 @@ const ClipboardIndicator = GObject.registerClass({
         })
 
         this._setEntryLabel(menuItem);
-        this.clipItemsRadioGroup.push(menuItem);
+        this._clipItems.push(menuItem);
 
-        this.historySection.addMenuItem(menuItem, 0);
+        this._historySection.addMenuItem(menuItem, 0);
 
         if (autoSelect === true) {
             this._selectMenuItem(menuItem, autoSetClip);
@@ -401,17 +414,17 @@ const ClipboardIndicator = GObject.registerClass({
     // Clear history feature removed
 
     _removeEntry (menuItem, event) {
-        let itemIdx = this.clipItemsRadioGroup.indexOf(menuItem);
+        const itemIdx = this._clipItems.indexOf(menuItem);
 
-        if(event === 'delete' && menuItem.currentlySelected) {
+        if (event === 'delete' && menuItem.currentlySelected) {
             this._clearClipboard();
         }
 
         menuItem.destroy();
-        this.clipItemsRadioGroup.splice(itemIdx,1);
+        this._clipItems.splice(itemIdx, 1);
 
         if (menuItem.entry.isImage()) {
-            this.registry.deleteEntryFile(menuItem.entry);
+            this._registry.deleteEntryFile(menuItem.entry);
         }
 
         this._updateCache();
@@ -419,16 +432,16 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _removeOldestEntries () {
-        let clipItemsRadioGroupNoFavorite = this.clipItemsRadioGroup.filter(
+        let clipItemsRadioGroupNoFavorite = this._clipItems.filter(
             item => item.entry.isFavorite() === false);
 
         const origSize = clipItemsRadioGroupNoFavorite.length;
 
-        while (clipItemsRadioGroupNoFavorite.length > MAX_REGISTRY_LENGTH) {
+        while (clipItemsRadioGroupNoFavorite.length > this._maxRegistryLength) {
             const oldestNoFavorite = clipItemsRadioGroupNoFavorite.shift();
             this._removeEntry(oldestNoFavorite);
 
-            clipItemsRadioGroupNoFavorite = this.clipItemsRadioGroup.filter(
+            clipItemsRadioGroupNoFavorite = this._clipItems.filter(
                 item => item.entry.isFavorite() === false);
         }
 
@@ -479,23 +492,23 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _getCache () {
-        return this.registry.read();
+        return this._registry.read();
     }
 
     _addToCache (entry) {
-        const entries = this.clipItemsRadioGroup
+        const entries = this._clipItems
             .map(menuItem => menuItem.entry)
-            .filter(entry => CACHE_ONLY_FAVORITE == false || entry.isFavorite())
+            .filter(item => !this._cacheOnlyFavorite || item.isFavorite())
             .concat([entry]);
-        this.registry.write(entries);
+        this._registry.write(entries);
     }
 
     _updateCache () {
-        const entries = this.clipItemsRadioGroup
+        const entries = this._clipItems
             .map(menuItem => menuItem.entry)
-            .filter(entry => CACHE_ONLY_FAVORITE == false || entry.isFavorite());
+            .filter(entry => !this._cacheOnlyFavorite || entry.isFavorite());
 
-        this.registry.write(entries);
+        this._registry.write(entries);
     }
 
     async _onSelectionChange (selection, selectionType, selectionSource) {
@@ -505,12 +518,12 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     async _refreshIndicator () {
-        if (PRIVATEMODE) return; // Private mode, do not.
+        if (this._privateMode) return; // Private mode, do not.
 
         const focussedWindow = Shell.Global.get().display.focusWindow;
         const wmClass = focussedWindow?.get_wm_class();
         
-        if (wmClass && EXCLUDED_APPS.includes(wmClass)) return; // Excluded app, do not.
+        if (wmClass && this._excludedApps.includes(wmClass)) return; // Excluded app, do not.
 
         if (this._refreshInProgress) return;
         this._refreshInProgress = true;
@@ -519,11 +532,11 @@ const ClipboardIndicator = GObject.registerClass({
             const result = await this._getClipboardContent();
 
             if (result) {
-                for (let menuItem of this.clipItemsRadioGroup) {
+                for (const menuItem of this._clipItems) {
                     if (menuItem.entry.equals(result)) {
                         this._selectMenuItem(menuItem, false);
 
-                        if (!menuItem.entry.isFavorite() && MOVE_ITEM_FIRST) {
+                        if (!menuItem.entry.isFavorite() && this._moveItemFirst) {
                             this._moveItemFirst(menuItem);
                         }
 
@@ -534,7 +547,7 @@ const ClipboardIndicator = GObject.registerClass({
                 this._addToCache(result);
                 this._addEntry(result, true, false);
                 this._removeOldestEntries();
-                if (NOTIFY_ON_COPY) {
+                if (this._notifyOnCopy) {
                     this._showNotification(_("Copied to clipboard"), notif => {
                         notif.addAction(_('Cancel'), this._cancelNotification);
                     });
@@ -557,11 +570,11 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _getCurrentlySelectedItem () {
-        return this.clipItemsRadioGroup.find(item => item.currentlySelected);
+        return this._clipItems.find(item => item.currentlySelected);
     }
 
     _getAllIMenuItems () {
-        return this.historySection._getMenuItems();
+        return this._historySection._getMenuItems();
     }
 
     _setupListener () {
@@ -571,9 +584,9 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _setupSelectionTracking (selection) {
-        this.selection = selection;
-        this._selectionOwnerChangedId = selection.connect('owner-changed', (selection, selectionType, selectionSource) => {
-            this._onSelectionChange(selection, selectionType, selectionSource);
+        this._selection = selection;
+        this._selectionOwnerChangedId = selection.connect('owner-changed', (selectionObj, selectionType, selectionSource) => {
+            this._onSelectionChange(selectionObj, selectionType, selectionSource);
         });
     }
 
@@ -595,9 +608,9 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _cancelNotification () {
-        if (this.clipItemsRadioGroup.length >= 2) {
-            let clipSecond = this.clipItemsRadioGroup.length - 2;
-            let previousClip = this.clipItemsRadioGroup[clipSecond];
+        if (this._clipItems.length >= 2) {
+            const clipSecond = this._clipItems.length - 2;
+            const previousClip = this._clipItems[clipSecond];
             this._updateClipboard(previousClip.entry);
             previousClip.setOrnament(PopupMenu.Ornament.NONE);
             // Delete icon removed; nothing to toggle here
@@ -605,8 +618,8 @@ const ClipboardIndicator = GObject.registerClass({
         } else {
             this._clearClipboard();
         }
-        let clipFirst = this.clipItemsRadioGroup.length - 1;
-        this._removeEntry(this.clipItemsRadioGroup[clipFirst]);
+        const clipFirst = this._clipItems.length - 1;
+        this._removeEntry(this._clipItems[clipFirst]);
     }
 
     _showNotification (message, transformFn) {
@@ -614,7 +627,7 @@ const ClipboardIndicator = GObject.registerClass({
             !Main.panel.statusArea.dateMenu._indicator._settings.get_boolean(
                 'show-banners',
             );
-        if (PRIVATEMODE || dndOn()) {
+        if (this._privateMode || dndOn()) {
             return;
         }
 
@@ -642,28 +655,25 @@ const ClipboardIndicator = GObject.registerClass({
         this._notifSource.addNotification(notification);
     }
 
-    _createHistoryLabel () {
-        this._historyLabel = new St.Label({
-            style_class: 'ci-notification-label',
-            text: ''
-        });
-
-        global.stage.add_child(this._historyLabel);
-
-        this._historyLabel.hide();
+    togglePrivateMode () {
+        this._setPrivateMode(!this._privateMode);
     }
 
-    togglePrivateMode () {
-        this.privateModeMenuItem.toggle();
+    _setPrivateMode (state) {
+        if (this._privateMode === state) {
+            return;
+        }
+
+        this._privateMode = state;
+        this._onPrivateModeSwitch();
     }
 
     _onPrivateModeSwitch () {
-        PRIVATEMODE = this.privateModeMenuItem.state;
         // We hide the history in private ModeTypee because it will be out of sync (selected item will not reflect clipboard)
-        this.scrollViewMenuSection.actor.visible = !PRIVATEMODE;
+        this._scrollViewMenuSection.actor.visible = !this._privateMode;
         // If we get out of private mode then we restore the clipboard to old state
-        if (!PRIVATEMODE) {
-            let selectList = this.clipItemsRadioGroup.filter((item) => !!item.currentlySelected);
+        if (!this._privateMode) {
+            const selectList = this._clipItems.filter(item => !!item.currentlySelected);
 
             if (selectList.length) {
                 this._selectMenuItem(selectList[0]);
@@ -677,21 +687,21 @@ const ClipboardIndicator = GObject.registerClass({
                 this._updateIndicatorContent(entry);
             }).catch(e => console.error(e));
 
-            this.hbox.remove_style_class_name('private-mode');
+            this._hbox.remove_style_class_name('private-mode');
             this._showElements();
         } else {
-            this.hbox.add_style_class_name('private-mode');
+            this._hbox.add_style_class_name('private-mode');
             this._updateIndicatorContent(null);
             this._hideElements();
         }
     }
 
     _loadSettings () {
-        this._settingsChangedId = this.extension.settings.connect('changed', () => this._onSettingsChange());
+        this._settingsChangedId = this._settings.connect('changed', () => this._onSettingsChange());
 
         this._fetchSettings();
 
-        if (ENABLE_KEYBINDING)
+        if (this._enableKeybinding)
             this._bindShortcuts();
     }
 
@@ -722,10 +732,7 @@ const ClipboardIndicator = GObject.registerClass({
         const sync = () => {
             const active = this._isScreenSharingActive();
             // Always reflect current state in private mode
-            if (this.privateModeMenuItem.state !== active) {
-                this.privateModeMenuItem.setState(active);
-            }
-            this._screenShareActive = active;
+            this._setPrivateMode(active);
             return GLib.SOURCE_CONTINUE;
         };
         // Run once immediately to reset stale state after restart
@@ -775,10 +782,7 @@ const ClipboardIndicator = GObject.registerClass({
             const id = actor.connect('notify::visible', () => {
                 // Recompute and sync immediately on visibility changes
                 const active = this._isScreenSharingActive();
-                if (this.privateModeMenuItem.state !== active) {
-                    this.privateModeMenuItem.setState(active);
-                }
-                this._screenShareActive = active;
+                this._setPrivateMode(active);
             });
             this._screenShareSignalIds.push([actor, id]);
         };
@@ -787,23 +791,24 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _fetchSettings () {
-        const { settings } = this.extension;
-        MAX_REGISTRY_LENGTH    = settings.get_int(PrefsFields.HISTORY_SIZE);
-        MAX_ENTRY_LENGTH       = settings.get_int(PrefsFields.PREVIEW_SIZE);
-        CACHE_ONLY_FAVORITE    = settings.get_boolean(PrefsFields.CACHE_ONLY_FAVORITE);
+        this._maxRegistryLength = this._settings.get_int(PrefsFields.HISTORY_SIZE);
+        this._maxEntryLength = this._settings.get_int(PrefsFields.PREVIEW_SIZE);
+        this._cacheOnlyFavorite = this._settings.get_boolean(PrefsFields.CACHE_ONLY_FAVORITE);
         // Removed: DELETE_ENABLED (dead setting in this codebase)
-        MOVE_ITEM_FIRST        = settings.get_boolean(PrefsFields.MOVE_ITEM_FIRST);
-        NOTIFY_ON_COPY         = settings.get_boolean(PrefsFields.NOTIFY_ON_COPY);
-        NOTIFY_ON_CYCLE        = settings.get_boolean(PrefsFields.NOTIFY_ON_CYCLE);
-        ENABLE_KEYBINDING      = settings.get_boolean(PrefsFields.ENABLE_KEYBINDING);
-        MAX_TOPBAR_LENGTH      = settings.get_int(PrefsFields.TOPBAR_PREVIEW_SIZE);
-        TOPBAR_DISPLAY_MODE    = settings.get_int(PrefsFields.TOPBAR_DISPLAY_MODE_ID);
-        CLEAR_ON_BOOT          = settings.get_boolean(PrefsFields.CLEAR_ON_BOOT);
-        PASTE_ON_SELECT        = settings.get_boolean(PrefsFields.PASTE_ON_SELECT);
-        DISABLE_DOWN_ARROW     = settings.get_boolean(PrefsFields.DISABLE_DOWN_ARROW);
-        STRIP_TEXT             = settings.get_boolean(PrefsFields.STRIP_TEXT);
-        CACHE_IMAGES           = settings.get_boolean(PrefsFields.CACHE_IMAGES);
-        EXCLUDED_APPS          = settings.get_strv(PrefsFields.EXCLUDED_APPS);
+        this._moveItemFirst = this._settings.get_boolean(PrefsFields.MOVE_ITEM_FIRST);
+        this._notifyOnCopy = this._settings.get_boolean(PrefsFields.NOTIFY_ON_COPY);
+        this._notifyOnCycle = this._settings.get_boolean(PrefsFields.NOTIFY_ON_CYCLE);
+        this._enableKeybinding = this._settings.get_boolean(PrefsFields.ENABLE_KEYBINDING);
+        this._maxTopbarLength = this._settings.get_int(PrefsFields.TOPBAR_PREVIEW_SIZE);
+        this._topbarDisplayMode = this._settings.get_int(PrefsFields.TOPBAR_DISPLAY_MODE_ID);
+        this._clearOnBoot = this._settings.get_boolean(PrefsFields.CLEAR_ON_BOOT);
+        this._pasteOnSelect = this._settings.get_boolean(PrefsFields.PASTE_ON_SELECT);
+        this._disableDownArrow = this._settings.get_boolean(PrefsFields.DISABLE_DOWN_ARROW);
+        this._stripText = this._settings.get_boolean(PrefsFields.STRIP_TEXT);
+        this._cacheImages = this._settings.get_boolean(PrefsFields.CACHE_IMAGES);
+        this._excludedApps = this._settings.get_strv(PrefsFields.EXCLUDED_APPS);
+        this._pasteButtonSetting = this._settings.get_boolean(PrefsFields.PASTE_BUTTON);
+        this._pinnedOnBottom = this._settings.get_boolean(PrefsFields.PINNED_ON_BOTTOM);
     }
 
     async _onSettingsChange () {
@@ -824,7 +829,7 @@ const ClipboardIndicator = GObject.registerClass({
             this._updateIndicatorContent(await this._getClipboardContent());
 
             // Bind or unbind shortcuts
-            if (ENABLE_KEYBINDING)
+            if (this._enableKeybinding)
                 this._bindShortcuts();
             else
                 this._unbindShortcuts();
@@ -840,11 +845,11 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _unbindShortcuts () {
-        this._shortcutsBindingIds.forEach(
+        this._shortcutBindingIds.forEach(
             (id) => Main.wm.removeKeybinding(id)
         );
 
-        this._shortcutsBindingIds = [];
+        this._shortcutBindingIds = [];
     }
 
     _bindShortcut (name, cb) {
@@ -852,38 +857,38 @@ const ClipboardIndicator = GObject.registerClass({
 
         Main.wm.addKeybinding(
             name,
-            this.extension.settings,
+            this._settings,
             Meta.KeyBindingFlags.NONE,
             ModeType.ALL,
             cb.bind(this)
         );
 
-        this._shortcutsBindingIds.push(name);
+        this._shortcutBindingIds.push(name);
     }
 
     _updateTopbarLayout () {
-        if(TOPBAR_DISPLAY_MODE === 0){
-            this.icon.visible = true;
+        if (this._topbarDisplayMode === 0) {
+            this._icon.visible = true;
             this._buttonText.visible = false;
             this._buttonImgPreview.visible = false;
             this.show();
         }
-        if(TOPBAR_DISPLAY_MODE === 1){
-            this.icon.visible = false;
+        if (this._topbarDisplayMode === 1) {
+            this._icon.visible = false;
             this._buttonText.visible = true;
             this._buttonImgPreview.visible = true;
             this.show();
         }
-        if(TOPBAR_DISPLAY_MODE === 2){
-            this.icon.visible = true;
+        if (this._topbarDisplayMode === 2) {
+            this._icon.visible = true;
             this._buttonText.visible = true;
             this._buttonImgPreview.visible = true;
             this.show();
         }
-        if (TOPBAR_DISPLAY_MODE === 3) {
+        if (this._topbarDisplayMode === 3) {
             this.hide();
         }
-        if(!DISABLE_DOWN_ARROW) {
+        if (!this._disableDownArrow) {
             this._downArrow.visible = true;
         } else {
             this._downArrow.visible = false;
@@ -894,20 +899,23 @@ const ClipboardIndicator = GObject.registerClass({
         if (!this._settingsChangedId)
             return;
 
-        this.extension.settings.disconnect(this._settingsChangedId);
-        this._settingsChangedId = null;
+        this._settings.disconnect(this._settingsChangedId);
+        this._settingsChangedId = 0;
     }
 
     _disconnectSelectionListener () {
         if (!this._selectionOwnerChangedId)
             return;
 
-        this.selection.disconnect(this._selectionOwnerChangedId);
+        this._selection.disconnect(this._selectionOwnerChangedId);
+        this._selectionOwnerChangedId = 0;
+        this._selection = null;
     }
 
     _clearDelayedSelectionTimeout () {
         if (this._delayedSelectionTimeoutId) {
-            clearInterval(this._delayedSelectionTimeoutId);
+            clearTimeout(this._delayedSelectionTimeoutId);
+            this._delayedSelectionTimeoutId = null;
         }
     }
 
@@ -917,11 +925,11 @@ const ClipboardIndicator = GObject.registerClass({
         this._delayedSelectionTimeoutId = setTimeout(() => {
             this._selectMenuItem(entry);  //select the item
             this._delayedSelectionTimeoutId = null;
-        }, DELAYED_SELECTION_TIMEOUT);
+        }, this._delayedSelectionTimeout);
     }
 
     _previousEntry () {
-        if (PRIVATEMODE) return;
+        if (this._privateMode) return;
 
         this._clearDelayedSelectionTimeout();
 
@@ -931,10 +939,10 @@ const ClipboardIndicator = GObject.registerClass({
                 if (i < 0) i = menuItems.length - 1; //cycle if out of bound
                 let index = i + 1;                   //index to be displayed
                 
-                if (NOTIFY_ON_CYCLE) {
-                    this._showNotification(index + ' / ' + menuItems.length + ': ' + menuItems[i].entry.getStringValue());
+                if (this._notifyOnCycle) {
+                    this._showNotification(index + ' / ' + menuItems.length + ': ' + this._getEntryText(menuItems[i].entry));
                 }
-                if (MOVE_ITEM_FIRST) {
+                if (this._moveItemFirst) {
                     this._selectEntryWithDelay(menuItems[i]);
                 }
                 else {
@@ -947,7 +955,7 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _nextEntry () {
-        if (PRIVATEMODE) return;
+        if (this._privateMode) return;
 
         this._clearDelayedSelectionTimeout();
 
@@ -957,10 +965,10 @@ const ClipboardIndicator = GObject.registerClass({
                 if (i === menuItems.length) i = 0;   //cycle if out of bound
                 let index = i + 1;                     //index to be displayed
 
-                if (NOTIFY_ON_CYCLE) {
-                    this._showNotification(index + ' / ' + menuItems.length + ': ' + menuItems[i].entry.getStringValue());
+                if (this._notifyOnCycle) {
+                    this._showNotification(index + ' / ' + menuItems.length + ': ' + this._getEntryText(menuItems[i].entry));
                 }
-                if (MOVE_ITEM_FIRST) {
+                if (this._moveItemFirst) {
                     this._selectEntryWithDelay(menuItems[i]);
                 }
                 else {
@@ -979,45 +987,59 @@ const ClipboardIndicator = GObject.registerClass({
     _pasteItem (menuItem) {
         this.menu.close();
         const currentlySelected = this._getCurrentlySelectedItem();
-        this.preventIndicatorUpdate = true;
+        this._preventIndicatorUpdate = true;
         this._updateClipboard(menuItem.entry);
         this._pastingKeypressTimeout = setTimeout(() => {
-            if (this.keyboard.purpose === Clutter.InputContentPurpose.TERMINAL) {
-                this.keyboard.press(Clutter.KEY_Control_L);
-                this.keyboard.press(Clutter.KEY_Shift_L);
-                this.keyboard.press(Clutter.KEY_Insert);
-                this.keyboard.release(Clutter.KEY_Insert);
-                this.keyboard.release(Clutter.KEY_Shift_L);
-                this.keyboard.release(Clutter.KEY_Control_L);
+            if (this._keyboard.purpose === Clutter.InputContentPurpose.TERMINAL) {
+                this._keyboard.press(Clutter.KEY_Control_L);
+                this._keyboard.press(Clutter.KEY_Shift_L);
+                this._keyboard.press(Clutter.KEY_Insert);
+                this._keyboard.release(Clutter.KEY_Insert);
+                this._keyboard.release(Clutter.KEY_Shift_L);
+                this._keyboard.release(Clutter.KEY_Control_L);
             }
             else {
-                this.keyboard.press(Clutter.KEY_Shift_L);
-                this.keyboard.press(Clutter.KEY_Insert);
-                this.keyboard.release(Clutter.KEY_Insert);
-                this.keyboard.release(Clutter.KEY_Shift_L);
+                this._keyboard.press(Clutter.KEY_Shift_L);
+                this._keyboard.press(Clutter.KEY_Insert);
+                this._keyboard.release(Clutter.KEY_Insert);
+                this._keyboard.release(Clutter.KEY_Shift_L);
             }
 
             this._pastingResetTimeout = setTimeout(() => {
-                this.preventIndicatorUpdate = false;
-                this._updateClipboard(currentlySelected.entry);
+                this._preventIndicatorUpdate = false;
+                if (currentlySelected) {
+                    this._updateClipboard(currentlySelected.entry);
+                }
             }, 50);
         }, 50);
     }
 
     _clearTimeouts () {
-        if (this._imagePreviewTimeout) clearTimeout(this._imagePreviewTimeout);
-        if (this._setFocusOnOpenTimeout) clearTimeout(this._setFocusOnOpenTimeout);
-        if (this._pastingKeypressTimeout) clearTimeout(this._pastingKeypressTimeout);
-        if (this._pastingResetTimeout) clearTimeout(this._pastingResetTimeout);
+        if (this._imagePreviewTimeout) {
+            clearTimeout(this._imagePreviewTimeout);
+            this._imagePreviewTimeout = null;
+        }
+        if (this._setFocusOnOpenTimeout) {
+            clearTimeout(this._setFocusOnOpenTimeout);
+            this._setFocusOnOpenTimeout = null;
+        }
+        if (this._pastingKeypressTimeout) {
+            clearTimeout(this._pastingKeypressTimeout);
+            this._pastingKeypressTimeout = null;
+        }
+        if (this._pastingResetTimeout) {
+            clearTimeout(this._pastingResetTimeout);
+            this._pastingResetTimeout = null;
+        }
     }
 
     _clearClipboard () {
-        this.extension.clipboard.set_text(CLIPBOARD_TYPE, "");
+        this._clipboard.set_text(CLIPBOARD_TYPE, '');
         this._updateIndicatorContent(null);
     }
 
     _updateClipboard (entry) {
-        this.extension.clipboard.set_content(CLIPBOARD_TYPE, entry.mimetype(), entry.asBytes());
+        this._clipboard.set_content(CLIPBOARD_TYPE, entry.mimetype(), entry.asBytes());
         this._updateIndicatorContent(entry);
     }
 
@@ -1037,7 +1059,7 @@ const ClipboardIndicator = GObject.registerClass({
         ];
 
         for (let type of mimetypes) {
-            let result = await new Promise(resolve => this.extension.clipboard.get_content(CLIPBOARD_TYPE, type, (clipBoard, bytes) => {
+            const result = await new Promise(resolve => this._clipboard.get_content(CLIPBOARD_TYPE, type, (clipBoard, bytes) => {
                 if (bytes === null || bytes.get_size() === 0) {
                     resolve(null);
                     return;
@@ -1050,14 +1072,14 @@ const ClipboardIndicator = GObject.registerClass({
                 }
                 
                 const entry = new ClipboardEntry(type, bytes.get_data(), false);
-                if (CACHE_IMAGES && entry.isImage()) {
-                    this.registry.writeEntryFile(entry);
+                if (this._cacheImages && entry.isImage()) {
+                    this._registry.writeEntryFile(entry);
                 }
                 resolve(entry);
             }));
 
             if (result) {
-                if (!CACHE_IMAGES && result.isImage()) {
+                if (!this._cacheImages && result.isImage()) {
                     return null;
                 }
                 else {

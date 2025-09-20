@@ -130,8 +130,6 @@ const ClipboardIndicator = GObject.registerClass({
             style_class: 'panel-status-menu-box clipboard-indicator-hbox'
         });
 
-        this.hbox = hbox;
-
         this.icon = new St.Icon({
             icon_name: INDICATOR_ICON,
             style_class: 'system-status-icon clipboard-indicator-icon'

@@ -64,11 +64,6 @@ class Settings {
             })
         });
 
-        this.field_display_mode = new Adw.ComboRow({
-            title: _("What to show in top bar"),
-            model: this.#createDisplayModeOptions()
-        });
-
         this.field_disable_down_arrow = new Adw.SwitchRow({
             title: _("Remove down arrow in top bar")
         });
@@ -165,7 +160,6 @@ class Settings {
         this.limits.add(this.field_cache_size);
         this.limits.add(this.field_cache_disable);
 
-        this.topbar.add(this.field_display_mode);
         this.topbar.add(this.field_topbar_preview_size);
         this.topbar.add(this.field_disable_down_arrow);
 
@@ -181,7 +175,6 @@ class Settings {
         this.schema.bind(PrefsFields.NOTIFY_ON_COPY, this.field_clear_notification_toggle, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.NOTIFY_ON_CYCLE, this.field_cycle_notification_toggle, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.MOVE_ITEM_FIRST, this.field_move_item_first, 'active', Gio.SettingsBindFlags.DEFAULT);
-        this.schema.bind(PrefsFields.TOPBAR_DISPLAY_MODE_ID, this.field_display_mode, 'selected', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.DISABLE_DOWN_ARROW, this.field_disable_down_arrow, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.TOPBAR_PREVIEW_SIZE, this.field_topbar_preview_size, 'value', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.STRIP_TEXT, this.field_strip_text, 'active', Gio.SettingsBindFlags.DEFAULT);
@@ -192,20 +185,6 @@ class Settings {
         this.schema.bind(PrefsFields.CACHE_IMAGES, this.field_cache_images, 'active', Gio.SettingsBindFlags.DEFAULT);
 
         this.#fetchExludedAppsList();
-    }
-
-    #createDisplayModeOptions () {
-        let options = [
-            _("Icon"),
-            _("Clipboard Content"),
-            _("Both"),
-            _("Neither")
-        ];
-        let liststore = new Gtk.StringList();
-        for (let option of options) {
-            liststore.append(option)
-        }
-        return liststore;
     }
 
     #shortcuts = {

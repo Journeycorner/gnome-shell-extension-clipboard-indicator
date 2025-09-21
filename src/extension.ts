@@ -115,7 +115,6 @@ const ClipboardIndicator = GObject.registerClass({
         this._notifyOnCopy = true;
         this._notifyOnCycle = true;
         this._maxTopbarLength = 15;
-        this._topbarDisplayMode = 1;
         this._clearOnBoot = false;
         this._pasteOnSelect = false;
         this._disableDownArrow = false;
@@ -165,32 +164,12 @@ const ClipboardIndicator = GObject.registerClass({
 
     // Sync the panel button preview with the newest clipboard entry.
     _updateIndicatorContent(entry) {
-        if (this._preventIndicatorUpdate || (this._topbarDisplayMode !== 1 && this._topbarDisplayMode !== 2)) {
+        if (this._preventIndicatorUpdate) {
             return;
         }
 
-        if (!entry || this._privateMode) {
-            this._buttonImgPreview.destroy_all_children();
-            this._buttonText.set_text('...');
-        } else {
-            if (entry.isText()) {
-                this._buttonText.set_text(this._truncate(this._getEntryText(entry), this._maxTopbarLength));
-                this._buttonImgPreview.destroy_all_children();
-            }
-            else if (entry.isImage()) {
-                this._buttonText.set_text('');
-                this._buttonImgPreview.destroy_all_children();
-                this._registry.getEntryAsImage(entry).then(img => {
-                    img.add_style_class_name('clipboard-indicator-img-preview');
-                    img.y_align = Clutter.ActorAlign.CENTER;
-
-                    // icon only renders properly in setTimeout for some arcane reason
-                    this._imagePreviewTimeout = setTimeout(() => {
-                        this._buttonImgPreview.set_child(img);
-                    }, 0);
-                });
-            }
-        }
+        this._buttonImgPreview.destroy_all_children();
+        this._buttonText.set_text('');
     }
 
     // Populate the popup with existing registry entries and set up sections.
@@ -655,10 +634,6 @@ const ClipboardIndicator = GObject.registerClass({
         this._notifSource.addNotification(notification);
     }
 
-    togglePrivateMode () {
-        this._setPrivateMode(!this._privateMode);
-    }
-
     _setPrivateMode (state) {
         if (this._privateMode === state) {
             return;
@@ -800,7 +775,6 @@ const ClipboardIndicator = GObject.registerClass({
         this._notifyOnCycle = this._settings.get_boolean(PrefsFields.NOTIFY_ON_CYCLE);
         this._enableKeybinding = this._settings.get_boolean(PrefsFields.ENABLE_KEYBINDING);
         this._maxTopbarLength = this._settings.get_int(PrefsFields.TOPBAR_PREVIEW_SIZE);
-        this._topbarDisplayMode = this._settings.get_int(PrefsFields.TOPBAR_DISPLAY_MODE_ID);
         this._clearOnBoot = this._settings.get_boolean(PrefsFields.CLEAR_ON_BOOT);
         this._pasteOnSelect = this._settings.get_boolean(PrefsFields.PASTE_ON_SELECT);
         this._disableDownArrow = this._settings.get_boolean(PrefsFields.DISABLE_DOWN_ARROW);
@@ -867,32 +841,12 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _updateTopbarLayout () {
-        if (this._topbarDisplayMode === 0) {
-            this._icon.visible = true;
-            this._buttonText.visible = false;
-            this._buttonImgPreview.visible = false;
-            this.show();
-        }
-        if (this._topbarDisplayMode === 1) {
-            this._icon.visible = false;
-            this._buttonText.visible = true;
-            this._buttonImgPreview.visible = true;
-            this.show();
-        }
-        if (this._topbarDisplayMode === 2) {
-            this._icon.visible = true;
-            this._buttonText.visible = true;
-            this._buttonImgPreview.visible = true;
-            this.show();
-        }
-        if (this._topbarDisplayMode === 3) {
-            this.hide();
-        }
-        if (!this._disableDownArrow) {
-            this._downArrow.visible = true;
-        } else {
-            this._downArrow.visible = false;
-        }
+        this._icon.visible = true;
+        this._buttonText.visible = false;
+        this._buttonImgPreview.visible = false;
+        this.show();
+
+        this._downArrow.visible = !this._disableDownArrow;
     }
 
     _disconnectSettings () {

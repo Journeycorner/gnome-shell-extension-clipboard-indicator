@@ -10,7 +10,6 @@ export const PrefsFields = {
     MOVE_ITEM_FIRST        : 'move-item-first',
     ENABLE_KEYBINDING      : 'enable-keybindings',
     TOPBAR_PREVIEW_SIZE    : 'topbar-preview-size',
-    TOPBAR_DISPLAY_MODE_ID : 'display-mode',
     DISABLE_DOWN_ARROW     : 'disable-down-arrow',
     STRIP_TEXT             : 'strip-text',
     PASTE_BUTTON           : 'paste-button',

@@ -351,15 +351,10 @@ const ClipboardIndicator = GObject.registerClass({
                     this._selectNextMenuItem(menuItem);
                     this._removeEntry(menuItem, 'delete');
                     break;
-                case Clutter.KEY_p:
-                    this._selectNextMenuItem(menuItem);
-                    this._favoriteToggle(menuItem);
-                    break;
                 case Clutter.KEY_v:
                     this._pasteItem(menuItem);
                     break;
-                case Clutter.KEY_KP_Enter:
-                case Clutter.KEY_Return:
+                case Clutter.KEY_KP_Enter, Clutter.KEY_Return:
                     if (this._pasteOnSelect) {
                         this._pasteItem(menuItem);
                     }
@@ -382,15 +377,6 @@ const ClipboardIndicator = GObject.registerClass({
 
         this._showElements();
     }
-
-    _favoriteToggle (menuItem) {
-        menuItem.entry.favorite = menuItem.entry.isFavorite() ? false : true;
-        this._moveItemFirst(menuItem);
-        this._updateCache();
-        this._showElements();
-    }
-
-    // Clear history feature removed
 
     _removeEntry (menuItem, event) {
         const itemIdx = this._clipItems.indexOf(menuItem);
@@ -568,8 +554,6 @@ const ClipboardIndicator = GObject.registerClass({
             this._onSelectionChange(selectionObj, selectionType, selectionSource);
         });
     }
-
-    // _openSettings removed (dead code)
 
     _initNotifSource () {
         if (!this._notifSource) {
